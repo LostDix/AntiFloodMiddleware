@@ -5,6 +5,9 @@ from aiogram import BaseMiddleware
 from aiogram.types import Update, Message
 from aiogram.exceptions import TelegramAPIError
 
+logger = logging.getLogger(__name__)
+
+
 class AntiFloodMiddleware(BaseMiddleware):
     def __init__(self, limit: int = 5, interval: float = 10.0):
         """
