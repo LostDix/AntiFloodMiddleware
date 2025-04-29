@@ -9,16 +9,18 @@ logger = logging.getLogger(__name__)
 
 
 class AntiFloodMiddleware(BaseMiddleware):
-    def __init__(self, limit: int = 5, interval: float = 10.0):
+    def __init__(self, limit: int = 5, interval: float = 10.0, bot_user_id: Optional[int] = None):
         """
         :param limit: Максимальное количество сообщений за интервал
         :param interval: Интервал времени в секундах
+        :param bot_user_id: ID бота, который будет исключен из проверки
         """
         self.limit = limit
         self.interval = interval
+        self.bot_user_id = bot_user_id
         self.user_messages = defaultdict(list)
         super().__init__()
-        logger.info(f"Initialized AntiFloodMiddleware with limit={limit}/per {interval}s")
+        logger.info(f"Initialized AntiFloodMiddleware with limit={limit}/per {interval}s, bot_user_id={bot_user_id}")
 
     async def __call__(
             self,
@@ -31,12 +33,26 @@ class AntiFloodMiddleware(BaseMiddleware):
             real_event = None
             if event.message:
                 real_event = event.message
+            elif event.channel_post:
+                logger.debug("Channel post detected, skipping flood check")
+                return await handler(event, data)
 
             if real_event is None or not hasattr(real_event, 'from_user'):
                 logger.debug("Unsupported event type, skipping flood check")
                 return await handler(event, data)
 
+            # Активируем антифлуд ТОЛЬКО в личных чатах с ботом
+            if real_event.chat.type != "private":
+                logger.debug(f"Skipping flood check for non-private chat: {real_event.chat.type}")
+                return await handler(event, data)
+
             user_id = real_event.from_user.id
+
+            # Пропускаем проверку для самого бота
+            if self.bot_user_id is not None and user_id == self.bot_user_id:
+                logger.debug(f"Skipping flood check for bot user {user_id}")
+                return await handler(event, data)
+
             current_time = time.time()
 
             # Очищаем старые сообщения
